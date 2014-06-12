@@ -39,6 +39,10 @@ public:
     explicit MainWindow(QWidget *parent = 0);
     ~MainWindow();
 
+protected:
+    // funkcja wykonywana przy zamykaniu okna
+    virtual void closeEvent(QCloseEvent *);
+
 private:
     // często używane stałe
     static const team BLUE = true;
@@ -100,9 +104,14 @@ private:
     int moveCounter;
     int passCounter;
     Tile *tiles[TILES_NUMBER];
+    Tile *opTiles[TILES_NUMBER];
     Pawn *pawns[PAWNS_NUMBER];
+    Pawn *opPawns[PAWNS_NUMBER];
     Tile *lastHighlighted;
     State currTurn;
+
+    // licznik rozpoczętych gier
+    int gameCounter;
 
     // stosy trzymające historię gry - do przeglądania i zapisu
     QStack<State> game;
@@ -143,6 +152,7 @@ private slots:
 
     // slot obsługujący wyświetlanie zasad gry
     void gameRules();
+
 
 signals:
     // sygnał zatwierdzający kliknięcie i-tego pola

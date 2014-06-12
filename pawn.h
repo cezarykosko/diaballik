@@ -21,7 +21,7 @@ public:
     Pawn(team whichTeam, int pos, bool hasBall, QGraphicsView *gV, QWidget *port);
 
     // operacje na pozycji pionka na planszy
-    void setPos(int num);
+    void setPos(int num, bool doPaint);
     int getPos();
 
     // akcesory danych pionka

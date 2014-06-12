@@ -23,6 +23,10 @@ int numToCoord1(int num);
 int numToCoord2(int num);
 int coordsToNum(int coord1, int coord2);
 
+//funkcje max i min
+int max(int a, int b);
+int min(int a, int b);
+
 // odległość między dwoma polami
 int dist(int num1, int num2);
 

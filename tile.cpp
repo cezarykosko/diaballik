@@ -37,10 +37,10 @@ void Tile::makeAvailable()
 }
 
 // ustalenie pionka na polu
-void Tile::setResident(Pawn *pawn)
+void Tile::setResident(Pawn *pawn, bool doPaint)
 {
     if(pawn != NULL){
-        pawn->setPos(position);}
+        pawn->setPos(position, doPaint);}
     resident=pawn;
 }
 

@@ -5,6 +5,8 @@
 #include<tile.h>
 #include<QVector>
 #include<QPair>
+#include<QSet>
+#include<QMessageBox>
 
 typedef bool team;
 
@@ -16,16 +18,22 @@ public:
     static const int TEAM_NUMBER = 7;
     static const int PAWNS_NUMBER = 2 * TEAM_NUMBER;
     static const int PAWN_W_BALL = 3;
+    static const int TILE_SIZE = 49;
 
-    Player(team col, bool ai, Tile *board[TILES_NUMBER], Pawn *pwns[PAWNS_NUMBER]);
+    Player(team col, bool ai, Tile *board[TILES_NUMBER], Pawn *pwns[PAWNS_NUMBER], QMainWindow *window);
 
     // własności gracza - czy jest komputerem i jaki ma kolor
     bool isArti();
     team getCol();
 
-    // funkcja zwracająca ruch wytworzony przez AI
-    QPair<int, int> makeMove(bool movesValid, bool passesValid);
+    void setOpponent(Player *opp);
 
+    // funkcja zwracająca ruch wytworzony przez AI
+    QVector<QPair<int, int> > makeMove();
+
+    int alphabeta(int alpha, int beta, int depth, team currPlayer);
+
+    bool checkUnfairLine(team player);
 
 private:
     // dane pionka
@@ -35,9 +43,15 @@ private:
     // wskaźniki do obecnego stanu gry
     Tile *tiles[TILES_NUMBER];
     Pawn *pawns[PAWNS_NUMBER];
+    Player *opponent;
+
+    // głębokość przeszukiwania drzewa gry
+    const int ALPHABETA_DEPTH = 2;
+
+    // wartość bezwzględna początkowych kresów przeszukiwania alfabety
+    const int START_GRADE = 6000;
 
     // funkcja oceniająca
-    const int START_GRADE = -300000;
     const int NO_BALL_GRADE[TILES_NUMBER] = {
         3,   1,   1,   1,   1,   1,   3,
         4,   4,   2,   2,   2,   4,   4,
@@ -57,16 +71,55 @@ private:
         3000,3000,3000,3000,3000,3000,3000
     };
 
-    /* funkcje pomocnicze wyznaczania ruchu - przetwarzanie przesunięć,
-     * podań i ocena stanu.
-     * dalej zmienne trzymające najlepszy aktualnie stan możliwy do uzyskania.
-     */
-    void pushAvailwoBall(Pawn *pawn);
-    void pushAvailwBall(Pawn *pawn);
+    // oznaczenia typów rezydentów pól - do funkcji hashującej
+    const int EMPTY = 0;
+    const int RED_W_BALL = 1;
+    const int BLUE_W_BALL = 2;
+    const int RED_WO_BALL = 3;
+    const int BLUE_WO_BALL = 4;
+    static const int RESIDENTS_NUMBER = 5;
+
+
+    const int MAX_PASSES = 1;
+    const int MAX_MOVES = 2;
+
+    // funkcje pomocnicze wyznaczania ruchu - przetwarzanie przesunięć i podań
+    void pushAvailwoBall(Pawn *pawn, QVector<QPair<int, int> > *results);
+    void pushAvailwBall(Pawn *pawn, QVector<QPair<int, int> > *results);
     QVector<int> passDirs(team colour, int dir, int now);
-    int gradePair(QPair<int, int> pair);
-    int bestGrade;
-    QPair<int, int> bestPair;
+
+    // funkcje kolejkujące możliwe ruchy i tury
+    QVector<QPair<int, int> > getMoves(bool movesValid, bool passesValid);
+    QVector<QVector<QPair<int, int> > > getChildren();
+
+    // funkcja oceniająca stan planszy
+    int grade(team currPlayer);
+
+    // tymczasowe wprowadzenie ruchów na planszę
+    void move(Tile *a, Tile *b, bool isForward);
+    void parseTurn(QVector<QPair<int, int> > turn, bool isForward);
+
+    // hash obecnego stanu, funkcja i tablica hashująca
+    unsigned long currentHash;
+    unsigned long hash();
+    unsigned long hashTable[TILES_NUMBER][RESIDENTS_NUMBER];
+
+    // funkcja zwracająca typ rezydenta pola
+    int analyzePawn(Pawn *pawn);
+
+    // liczniki ruchów w turze
+    int movesCounter;
+    int passesCounter;
+
+    // bool sprawdzający, czy AI ma przeszukiwać drzewo gry
+    bool doProcess;
+
+    // wskaźnik do okna głównego gry
+    QMainWindow *ui;
+
+public slots:
+    // slot wywoływany, gdy AI ma przestać wykonywać obliczenia
+    void interrupted();
 };
 
 #endif // PLAYER_H

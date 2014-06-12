@@ -14,15 +14,17 @@ Pawn::Pawn(team whichTeam, int pos, bool hasBall, QGraphicsView *gV, QWidget *po
 }
 
 // ustalenie pozycji pionka na planszy
-void Pawn::setPos(int num)
+void Pawn::setPos(int num, bool doPaint)
 {
     position = num;
+    if (doPaint) {
     prepareGeometryChange();
     coord1 = numToCoord1(num);
     prepareGeometryChange();
     coord2 = numToCoord2(num);
-    graphicsView->repaint();
-    viewport->update();
+        graphicsView->repaint();
+        viewport->update();
+    }
 }
 
 // wyciągnięcie pozycji pionka na planszy

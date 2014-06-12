@@ -27,7 +27,6 @@ MainWindow::MainWindow(QWidget *parent) :
 
     // mapper sygnałów z pól
     clickMap = new QSignalMapper(this);
-
     // zmienne dot. stanu gry
     lastHighlighted = NULL;
     players[RED] = NULL;
@@ -35,6 +34,7 @@ MainWindow::MainWindow(QWidget *parent) :
     doParse = false;
     gameOn = false;
     editModeOn = false;
+    gameCounter = 0;
 
     // ustawienie pól na planszy
     for(int i = 0; i < TILES_NUMBER; i++) {
@@ -70,8 +70,8 @@ MainWindow::MainWindow(QWidget *parent) :
                 new Pawn(RED, TILES_NUMBER - 1 - i,
                          (i == PAWN_W_BALL), ui->graphicsView, viewport);
         scene->addItem(pawns[PAWNS_NUMBER - 1 - i]);
-        tiles[i]->setResident(pawns[i]);
-        tiles[TILES_NUMBER - 1 - i]->setResident(pawns[PAWNS_NUMBER - 1 - i]);
+        tiles[i]->setResident(pawns[i], true);
+        tiles[TILES_NUMBER - 1 - i]->setResident(pawns[PAWNS_NUMBER - 1 - i], true);
     }
 }
 
@@ -90,12 +90,22 @@ MainWindow::~MainWindow()
         delete players[1];
 }
 
+// przed zamknięciem okna przerywane są obliczenia
+void MainWindow::closeEvent(QCloseEvent *)
+{
+    gameOn = false;
+    if(players[0] != NULL)
+        players[0]->interrupted();
+    if(players[1] != NULL)
+        players[1]->interrupted();
+}
+
 // wykonanie ruchu między polami a i b
 void MainWindow::makeMove(Tile* a, Tile* b)
 {
     Pawn* temp = (a->getResident());
-    a->setResident(b->getResident());
-    b->setResident(temp);
+    a->setResident(b->getResident(), true);
+    b->setResident(temp, true);
 }
 
 // oznaczenie pól, na które można wykonać ruch
@@ -149,23 +159,29 @@ void MainWindow::markAll()
  */
 void MainWindow::newGame(bool red, bool blue)
 {
+
+    gameCounter++;
     // zainicjowanie graczy
     if(players[0] != NULL)
-        delete players[0];
-    players[0] = new Player(0, red, tiles, pawns);
+        players[0]->interrupted();
+    delete players[0];
+    players[0] = new Player(0, red, tiles, pawns, this);
     if(players[1] != NULL)
-        delete players[1];
-    players[1] = new Player(1, blue, tiles, pawns);
+        players[1]->interrupted();
+    delete players[1];
+    players[1] = new Player(1, blue, tiles, pawns, this);
+    players[0]->setOpponent(players[1]);
+    players[1]->setOpponent(players[0]);
 
     // ustawienie pionków na pozycjach startowych
     for(int i=0; i < TEAM_NUMBER; i++) {
-        tiles[pawns[i]->getPos()]->setResident(tiles[i]->getResident());
+        tiles[pawns[i]->getPos()]->setResident(tiles[i]->getResident(), true);
         tiles[pawns[PAWNS_NUMBER - 1 - i]->getPos()]->
-                setResident(tiles[TILES_NUMBER - 1 - i]->getResident());
-        tiles[i]->setResident(pawns[i]);
-        pawns[i]->setPos(i);
-        tiles[TILES_NUMBER - 1 - i]->setResident(pawns[PAWNS_NUMBER - 1 - i]);
-        pawns[PAWNS_NUMBER - 1 - i]->setPos(TILES_NUMBER - 1 - i);
+                setResident(tiles[TILES_NUMBER - 1 - i]->getResident(), true);
+        tiles[i]->setResident(pawns[i], true);
+        pawns[i]->setPos(i, true);
+        tiles[TILES_NUMBER - 1 - i]->setResident(pawns[PAWNS_NUMBER - 1 - i], true);
+        pawns[PAWNS_NUMBER - 1 - i]->setPos(TILES_NUMBER - 1 - i, true);
     }
 
     // zainicjowanie stosów przechowujących stany gry
@@ -196,6 +212,8 @@ void MainWindow::startTurn()
     // ustawienie stanów przycisków
     ui->undoButton->setEnabled(false);
     ui->hintButton->setEnabled(!currPlayer->isArti());
+    ui->endTurnButton->setEnabled(!currPlayer->isArti());
+    //ui->turnEditButton->setEnabled(!currPlayer->isArti());
 
     // wyzerowanie liczników ruchów
     moveCounter = 0;
@@ -210,8 +228,10 @@ void MainWindow::startTurn()
     dispCurrState();
     if(currPlayer->isArti()) {
         doParse = false;
+        int currGame = gameCounter;
         AITurn();
-        ui->undoButton->setEnabled(false);
+        if(currGame == gameCounter && !editModeOn)
+            on_endTurnButton_clicked();
     } else {
         doParse = true;
     }
@@ -220,17 +240,34 @@ void MainWindow::startTurn()
 // wykonanie ruchu przez AI
 void MainWindow::AITurn()
 {
-    for(int i = 0; i < MAX_PASSES + MAX_MOVES; i++) {
-        QPair<int, int> move =
-                currPlayer->makeMove(moveCounter < MAX_MOVES,
-                                     passCounter < MAX_PASSES);
-        if(move != PASS) {
-            doParse = true;
-            parseClick(move.first);
-            parseClick(move.second);
-            doParse = !(currPlayer->isArti());
+    QEventLoop events;
+    events.setParent(this);
+    while(!future.isEmpty()) {
+        events.processEvents(QEventLoop::AllEvents);
+    }
+    QVector<QPair<int, int> > turn = currPlayer->makeMove();
+    while(!turn.isEmpty()) {
+        if(editModeOn){
+            break;
+        }
+        while(!future.isEmpty()) {
+            events.processEvents(QEventLoop::AllEvents);
+        }
+        QPair<int, int> move = turn.front();
+        turn.pop_front();
+        doParse = true;
+        parseClick(move.first);
+        parseClick(move.second);
+        doParse = false;
+        ui->undoButton->setEnabled(false);
+        for(int i = 0; i < 10; i++){
+            QThread::msleep(50);
+            events.processEvents(QEventLoop::AllEvents);
         }
     }
+    doParse = !currPlayer->isArti() || editModeOn;
+    ui->undoButton->setEnabled(!currPlayer->isArti() && gameOn);
+    ui->hintButton->setEnabled(!currPlayer->isArti() && gameOn);
 }
 
 // parsowanie kliknięcia, gdy nie ma wybranego pola
@@ -317,6 +354,7 @@ void MainWindow::endgame(team winner)
     ui->endTurnButton->setEnabled(false);
     ui->undoButton->setEnabled(false);
     ui->turnEditButton->setEnabled(false);
+    ui->hintButton->setEnabled(false);
 }
 
 // sprawdzenie, czy któryś z graczy wygrał w standardowy sposób
@@ -334,50 +372,8 @@ void MainWindow::checkRegularWin()
 // sprawdzenie czy gracz przegrał przez stworzenie linii nie do przejścia
 void MainWindow::checkUnfairLine(team colour)
 {
-    Pawn* columns[TEAM_NUMBER];
-    for(int i = 0; i < BOARD_SIZE; i++) {
-        columns[i] = NULL;
-    }
-    for(int i = 0; i < TEAM_NUMBER; i++) {
-        if(colour) {
-            columns[numToCoord1(pawns[i]->getPos()) / TILE_SIZE] = pawns[i];
-        } else {
-            int j = PAWNS_NUMBER - 1 - i;
-            columns[numToCoord1(pawns[j]->getPos()) / TILE_SIZE] = pawns[j];
-        }
-    }
-
-    // sprawdzenie, czy w każdej kolumnie znajduje się pionek gracza
-    bool checkFilling = true;
-    for(int i = 0; i < BOARD_SIZE; i++) {
-        checkFilling = checkFilling && columns[i] != NULL;
-    }
-    if(checkFilling) {
-
-        //sprawdzenie, czy pionki tworzą linię nie do przejścia
-        bool checkLine = true;
-        for(int i = 0; i < BOARD_SIZE - 1; i++) {
-            checkLine = checkLine && dist(columns[i]->getPos(),
-                                          columns[i + 1]->getPos()) <= 2;
-        }
-        if(checkLine) {
-
-            //sprawdzenie, czy 3 pionki przeciwnika sąsiadują z linią
-            int countAdjacent = 0;
-            int dir;
-            if(colour) dir = DOWN;
-            else dir = UP;
-            for(int i = 0; i < BOARD_SIZE; i++) {
-                if(tiles[columns[i]->getPos() + dir]->getResident() != NULL){
-                    countAdjacent++;
-                }
-            }
-            if(countAdjacent >= 3){
-                endgame(!colour);
-            }
-        }
-
-    }
+    if(currPlayer->checkUnfairLine(colour))
+        endgame(!colour);
 }
 
 // sprawdzenie, czy gra została zakończona
@@ -505,18 +501,27 @@ void MainWindow::on_endTurnButton_clicked()
 {
     if(lastHighlighted != NULL)
         parseClick(lastHighlighted->getPosition());
+
     ui->prevTurnButton->setEnabled(true);
-    past.push(currTurn);
-    game.push(currTurn);
     if(gameOn) {
+        past.push(currTurn);
+        game.push(currTurn);
         currPlayer =  players[!currPlayer->getCol()];
         startTurn();
+    } else {
+        ui->undoButton->setEnabled(false);
+        ui->endTurnButton->setEnabled(false);
+        ui->turnEditButton->setEnabled(false);
+        ui->hintButton->setEnabled(false);
     }
 }
 
 // obsługa przycisku cofania ruchu
 void MainWindow::on_undoButton_clicked()
 {
+    if(lastHighlighted != NULL)
+        parseClick(lastHighlighted->getPosition());
+
     QPair<int, int> temp = currTurn.moves.last();
     currTurn.moves.pop_back();
     int from = temp.first;
@@ -537,6 +542,9 @@ void MainWindow::on_undoButton_clicked()
 // obsługa przycisku wyświetlenia poprzedniej tury
 void MainWindow::on_prevTurnButton_clicked()
 {
+    if(lastHighlighted != NULL)
+        parseClick(lastHighlighted->getPosition());
+
     doParse = false;
     ui->undoButton->setEnabled(false);
     ui->endTurnButton->setEnabled(false);
@@ -557,8 +565,10 @@ void MainWindow::on_prevTurnButton_clicked()
 
     dispState(future.top());
 
-    if(past.isEmpty()) ui->prevTurnButton->setEnabled(false);
+    ui->prevTurnButton->setEnabled(!past.isEmpty());
     ui->nextTurnButton->setEnabled(true);
+    ui->turnEditButton->setEnabled(false);
+    ui->hintButton->setEnabled(false);
 }
 
 // obsługa przycisku wyświetlenia następnej tury
@@ -577,21 +587,28 @@ void MainWindow::on_nextTurnButton_clicked()
     if(future.isEmpty()){
         doParse = true;
         dispCurrState();
+        ui->turnEditButton->setEnabled(gameOn);
         ui->nextTurnButton->setEnabled(false);
-        ui->endTurnButton->setEnabled(gameOn);
-        ui->undoButton->setEnabled(gameOn && currTurn.moves.size() > 0);
-    } else dispState(change);
+        ui->endTurnButton->setEnabled(!currPlayer->isArti() && gameOn);
+        ui->undoButton->setEnabled(!currPlayer->isArti() && gameOn && currTurn.moves.size() > 0);
+        ui->hintButton->setEnabled(!currPlayer->isArti() && gameOn);
+    } else {
+        doParse = false;
+        dispState(change);
+    }
 
     ui->prevTurnButton->setEnabled(true);
 }
 
 // obsługa przycisku hinta
 void MainWindow::on_hintButton_clicked()
-{
+{    
+    ui->hintButton->setEnabled(false);
     while(ui->undoButton->isEnabled()){
         on_undoButton_clicked();
     }
     AITurn();
+    ui->hintButton->setEnabled(true);
 }
 
 // obsługa trybu edycji planszy
@@ -641,6 +658,9 @@ void MainWindow::on_turnEditButton_clicked()
 // obsługa zapisu gry
 void MainWindow::saveGame()
 {
+    if(lastHighlighted != NULL)
+        parseClick(lastHighlighted->getPosition());
+
     if(gameOn) {
         QFile outputFile;
         QString outputFileName = QFileDialog::getSaveFileName(this,tr("Zapisz Grę"),".",tr("Diaballik game file (*.dia)"));
@@ -667,13 +687,18 @@ void MainWindow::saveGame()
 // obsługa wczytania gry
 void MainWindow::loadGame()
 {
+    if(lastHighlighted != NULL)
+        parseClick(lastHighlighted->getPosition());
+
     bool red, blue, isEditMode;
     int size;
     team currTeam;
     QVector<QPair<int, int> > moves;
 
     QFile inputFile;
-    QString inputFileName = QFileDialog::getOpenFileName(this,tr("Wczytaj Grę"),".",tr("Diaballik game file (*.dia)"));
+
+
+    QString inputFileName = QFileDialog::getOpenFileName(this,tr("Wczytaj Grę"),".",tr("Diaballik game file (*.dia);;Other files (*.*)"));
     if(!inputFileName.isEmpty()) {
         inputFile.setFileName(inputFileName);
         inputFile.open(QIODevice::ReadOnly);
@@ -705,17 +730,19 @@ void MainWindow::loadGame()
             past.push(temp);
         }
 
+        inputFile.close();
+
         for(int i = 0; i < currTurn.moves.size(); i++){
             int from = currTurn.moves[i].first;
             int to = currTurn.moves[i].second;
             makeMove(tiles[from], tiles[to]);
         }
-
-        dispCurrState();
-        ui->undoButton->setEnabled(moveCounter + passCounter > 0);
-        ui->prevTurnButton->setEnabled(past.size() > 1);
-        ui->hintButton->setEnabled(!(editModeOn || currPlayer->isArti()));
     }
+
+    dispCurrState();
+    ui->undoButton->setEnabled(moveCounter + passCounter > 0);
+    ui->prevTurnButton->setEnabled(past.size() > 1);
+    ui->hintButton->setEnabled(!(editModeOn || currPlayer->isArti()));
 }
 
 // wyświetlenie zasad gry

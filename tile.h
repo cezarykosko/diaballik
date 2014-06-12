@@ -29,7 +29,7 @@ public:
     void makeAvailable();
 
     // obsługa pionka na polu (lub jego braku)
-    void setResident(Pawn *pawn);
+    void setResident(Pawn *pawn, bool doPaint);
     Pawn* getResident();
 
     // elementy QGraphicsItem

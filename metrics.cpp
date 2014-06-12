@@ -29,3 +29,21 @@ int dist(int num1, int num2)
     return (abs((numToCoord1(num1)) - (numToCoord1(num2))) +
             abs((numToCoord2(num1)) - (numToCoord2(num2)))) / TILE_SIZE;
 }
+
+// maksimum dwóch liczb
+int max(int a, int b)
+{
+    if(a > b)
+        return a;
+    else
+        return b;
+}
+
+// minimum dwóch liczb
+int min(int a, int b)
+{
+    if(a < b)
+        return a;
+    else
+        return b;
+}
